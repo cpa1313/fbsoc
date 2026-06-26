@@ -54,7 +54,10 @@ def _add_natural_pauses(text: str) -> str:
     # and stacks three extra 600ms breaks on top - this was bloating
     # every ellipsis into ~2.6s of dead air and blowing up total
     # audio/video length (and frame count, hence the slow CI render).
-    ELLIPSIS_TOKEN = "\uE000"  # private-use char, won't appear in real text
+    # Use a plain-ASCII marker (not a unicode private-use char) since
+    # the text gets embedded in SSML/XML and odd code points can make
+    # the TTS service choke and return no audio at all.
+    ELLIPSIS_TOKEN = "ZZELLIPSISZZ"
     text = text.replace("...", ELLIPSIS_TOKEN)
     text = text.replace(",", ',<break time="400ms"/>')
     text = text.replace(".", '.<break time="600ms"/>')
