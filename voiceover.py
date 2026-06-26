@@ -28,47 +28,10 @@ DEFAULT_VOICE_POOL = [
     "en-AU-NatashaNeural",  # Distinct, warm Australian tone
 ]
 
-# SSML template: adds pauses between sentences, slight pitch variation,
-# and a slower, more deliberate speaking rate for emotional weight.
-SSML_TEMPLATE = """<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis'
-    xmlns:mstts='http://www.w3.org/2001/mstts'
-    xml:lang='en-US'>
-  <voice name='{voice}'>
-    <mstts:express-as style='gentle' styledegree='1.5'>
-      <prosody rate='{rate}' pitch='{pitch}'>
-        {text}
-      </prosody>
-    </mstts:express-as>
-  </voice>
-</speak>"""
 
 def pick_voice() -> str:
     forced = os.environ.get("TTS_VOICE")
     return forced if forced else random.choice(DEFAULT_VOICE_POOL)
-
-
-def _add_natural_pauses(text: str) -> str:
-    """Insert SSML break tags after punctuation and at natural breath points."""
-    # IMPORTANT: ellipsis dots must be swapped out for a placeholder
-    # BEFORE the single-dot rule runs, otherwise the single-dot rule
-    # re-matches the three literal dots still sitting inside the text
-    # and stacks three extra 600ms breaks on top - this was bloating
-    # every ellipsis into ~2.6s of dead air and blowing up total
-    # audio/video length (and frame count, hence the slow CI render).
-    # Use a plain-ASCII marker (not a unicode private-use char) since
-    # the text gets embedded in SSML/XML and odd code points can make
-    # the TTS service choke and return no audio at all.
-    ELLIPSIS_TOKEN = "ZZELLIPSISZZ"
-    text = text.replace("...", ELLIPSIS_TOKEN)
-    text = text.replace(",", ',<break time="400ms"/>')
-    text = text.replace(".", '.<break time="600ms"/>')
-    text = text.replace("?", '?<break time="600ms"/>')
-    text = text.replace("!", '!<break time="500ms"/>')
-    text = text.replace(ELLIPSIS_TOKEN, '...<break time="800ms"/>')
-    # Add a small breath pause before conjunctions for natural rhythm
-    for word in [" but ", " and ", " so ", " yet ", " or "]:
-        text = text.replace(word, f'<break time="200ms"/>{word.strip()} ')
-    return text
 
 
 def _merge_word_timings(raw_timings: list[dict], original_text: str) -> list[dict]:
@@ -120,13 +83,10 @@ def _merge_word_timings(raw_timings: list[dict], original_text: str) -> list[dic
 async def _save_with_word_timing(
     text: str, out_path: str, voice: str, rate: str, pitch: str
 ) -> list[dict]:
-    ssml = SSML_TEMPLATE.format(
-        voice=voice,
-        rate=rate,
-        pitch=pitch,
-        text=_add_natural_pauses(text),
-    )
-    communicate = edge_tts.Communicate(ssml, voice)
+    # Pass rate and pitch directly — NO SSML. Edge-tts handles these as
+    # native parameters so the voice reads the plain text naturally without
+    # accidentally reading out XML tags aloud.
+    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     raw_timings = []
     with open(out_path, "wb") as f:
         async for chunk in communicate.stream():
@@ -139,8 +99,6 @@ async def _save_with_word_timing(
                 raw_timings.append({"text": chunk["text"], "start": start, "end": end})
 
     # Merge any sub-word phoneme fragments back into whole words.
-    # edge-tts can split e.g. "for" → ["fo", "r"] when SSML break tags
-    # are present nearby, causing karaoke text to split mid-word.
     word_timings = _merge_word_timings(raw_timings, text)
     return word_timings
 
