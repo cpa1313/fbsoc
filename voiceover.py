@@ -48,11 +48,19 @@ def pick_voice() -> str:
 
 def _add_natural_pauses(text: str) -> str:
     """Insert SSML break tags after punctuation and at natural breath points."""
+    # IMPORTANT: ellipsis dots must be swapped out for a placeholder
+    # BEFORE the single-dot rule runs, otherwise the single-dot rule
+    # re-matches the three literal dots still sitting inside the text
+    # and stacks three extra 600ms breaks on top - this was bloating
+    # every ellipsis into ~2.6s of dead air and blowing up total
+    # audio/video length (and frame count, hence the slow CI render).
+    ELLIPSIS_TOKEN = "\uE000"  # private-use char, won't appear in real text
+    text = text.replace("...", ELLIPSIS_TOKEN)
     text = text.replace(",", ',<break time="400ms"/>')
     text = text.replace(".", '.<break time="600ms"/>')
-    text = text.replace("...", '...<break time="800ms"/>')
     text = text.replace("?", '?<break time="600ms"/>')
     text = text.replace("!", '!<break time="500ms"/>')
+    text = text.replace(ELLIPSIS_TOKEN, '...<break time="800ms"/>')
     # Add a small breath pause before conjunctions for natural rhythm
     for word in [" but ", " and ", " so ", " yet ", " or "]:
         text = text.replace(word, f'<break time="200ms"/>{word.strip()} ')
