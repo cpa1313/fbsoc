@@ -13,6 +13,7 @@ want - browse options with: `edge-tts --list-voices`
 
 import asyncio
 import os
+import re
 import random
 import edge_tts
 
@@ -70,6 +71,52 @@ def _add_natural_pauses(text: str) -> str:
     return text
 
 
+def _merge_word_timings(raw_timings: list[dict], original_text: str) -> list[dict]:
+    """
+    edge-tts WordBoundary events can return sub-word phoneme fragments
+    instead of whole words — e.g. "for" comes back as ["fo", "r"] and
+    "myself" as ["myse", "lf"]. This causes the karaoke layout to treat
+    fragments as separate words, breaking mid-word across lines.
+
+    Fix: greedily consume raw timing tokens until their stripped+lowercased
+    concatenation matches each original word, then emit a single merged
+    entry spanning the full start→end range of those tokens.
+    """
+    orig_words = re.findall(r"\S+", original_text)
+    if not orig_words or not raw_timings:
+        return raw_timings
+
+    def clean(s: str) -> str:
+        """Strip punctuation for comparison only."""
+        return re.sub(r"[^\w'-]", "", s).lower()
+
+    merged = []
+    t_idx = 0
+
+    for word in orig_words:
+        target = clean(word)
+        if not target or t_idx >= len(raw_timings):
+            continue
+
+        acc = ""
+        start = raw_timings[t_idx]["start"]
+        end = raw_timings[t_idx]["end"]
+
+        while t_idx < len(raw_timings):
+            tok = clean(raw_timings[t_idx]["text"])
+            end = raw_timings[t_idx]["end"]
+            acc += tok
+            t_idx += 1
+            if acc == target:
+                break                  # perfect match — done
+            if not target.startswith(acc):
+                break                  # diverged — accept what we have
+
+        merged.append({"text": word, "start": start, "end": end})
+
+    return merged
+
+
 async def _save_with_word_timing(
     text: str, out_path: str, voice: str, rate: str, pitch: str
 ) -> list[dict]:
@@ -80,7 +127,7 @@ async def _save_with_word_timing(
         text=_add_natural_pauses(text),
     )
     communicate = edge_tts.Communicate(ssml, voice)
-    word_timings = []
+    raw_timings = []
     with open(out_path, "wb") as f:
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -89,7 +136,12 @@ async def _save_with_word_timing(
                 # offset/duration come back in 100-nanosecond ticks
                 start = chunk["offset"] / 10_000_000
                 end = (chunk["offset"] + chunk["duration"]) / 10_000_000
-                word_timings.append({"text": chunk["text"], "start": start, "end": end})
+                raw_timings.append({"text": chunk["text"], "start": start, "end": end})
+
+    # Merge any sub-word phoneme fragments back into whole words.
+    # edge-tts can split e.g. "for" → ["fo", "r"] when SSML break tags
+    # are present nearby, causing karaoke text to split mid-word.
+    word_timings = _merge_word_timings(raw_timings, text)
     return word_timings
 
 
