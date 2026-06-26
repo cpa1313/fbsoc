@@ -25,89 +25,13 @@ DEFAULT_VOICE_POOL = [
     "en-US-JennyNeural",    # Soft, conversational, gentle delivery
     "en-GB-SoniaNeural",    # Slightly breathy, poetic feel
     "en-US-MichelleNeural", # Rich, calm, very natural
-    "en-AU-NatashaNeural",  # Distinct, warm Australian tone - great for motivation
+    "en-AU-NatashaNeural",  # Distinct, warm Australian tone
 ]
-
-# ── Emotion / energy presets ──────────────────────────────────────────────────
-# Each preset is (rate, pitch, volume).
-# "motivational" is tuned for NatashaNeural but works well with all voices.
-EMOTION_PRESETS = {
-    "motivational": ("+18%", "+10Hz", "+20%"),   # Energetic, uplifting, punchy
-    "calm":         ("-8%",  "-3Hz",  "+0%"),    # Thoughtful, reflective
-    "powerful":     ("+8%",  "+5Hz",  "+25%"),   # Bold, authoritative
-    "gentle":       ("-12%", "-5Hz",  "-5%"),    # Soft and warm
-}
-
-ACTIVE_PRESET = os.environ.get("TTS_EMOTION", "motivational")
 
 
 def pick_voice() -> str:
     forced = os.environ.get("TTS_VOICE")
     return forced if forced else random.choice(DEFAULT_VOICE_POOL)
-
-
-# ── Text coaching: guide the neural voice into emotional delivery ─────────────
-
-# Words that deserve a strong beat — we place a comma BEFORE them so the voice
-# pauses slightly and then hits the word with renewed energy.
-_POWER_WORDS = {
-    "never", "always", "every", "only", "now", "today", "rise", "fight",
-    "believe", "become", "choose", "create", "start", "stop", "must",
-    "will", "won't", "can", "cannot", "enough", "more", "you", "yourself",
-    "stronger", "better", "harder", "possible", "impossible", "dream",
-    "action", "change", "forward", "unstoppable", "greatness", "success",
-    "purpose", "passion", "courage", "fear", "pain", "power", "truth",
-    "decide", "commit", "push", "limit", "break", "build", "earn", "win",
-}
-
-# Sentence-ending words — add "..." so the voice trails powerfully before
-# the next sentence kicks in (creates deliberate, emotional pacing).
-_TRAILING_PUNCTUATION = {".", "!", "?"}
-
-
-def _coach_text(text: str) -> str:
-    """
-    Massage the quote text so the neural TTS model delivers it with more
-    emotion and punch. We don't change words — we only add commas, ellipses,
-    and exclamation marks as coaching signals.
-
-    Rules:
-      1. Sentences ending with "." become "..." for a trailing, powerful pause.
-      2. "." mid-sentence → keep as-is (TTS already pauses naturally).
-      3. Known power words get a comma inserted before them (unless one already
-         exists) so the voice breathes and then delivers with fresh energy.
-      4. Short sentences (≤ 5 words) get an "!" appended if they don't already
-         end with "?" or "!" — short punchy lines deserve maximum impact.
-    """
-    # Step 1: convert sentence-ending periods to ellipsis for trailing energy
-    # Match period at end of a word that is followed by whitespace or end-of-str
-    text = re.sub(r'\.(\s|$)', r'...\1', text)
-
-    # Step 2: insert comma before power words for a breath-then-punch effect
-    words = text.split(" ")
-    coached = []
-    for i, word in enumerate(words):
-        core = re.sub(r"[^\w]", "", word).lower()
-        if core in _POWER_WORDS and i > 0 and not coached[-1].endswith(","):
-            coached.append(word)
-            # swap: put comma at end of PREVIOUS token
-            coached[-2] = coached[-2].rstrip() + ","
-        else:
-            coached.append(word)
-    text = " ".join(coached)
-
-    # Step 3: short punchy sentences get "!" if they don't already
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-    boosted = []
-    for sentence in sentences:
-        word_count = len(sentence.split())
-        last_char = sentence.rstrip()[-1] if sentence.rstrip() else ""
-        if word_count <= 5 and last_char not in ("!", "?"):
-            sentence = sentence.rstrip(".") + "!"
-        boosted.append(sentence)
-    text = " ".join(boosted)
-
-    return text
 
 
 def _merge_word_timings(raw_timings: list[dict], original_text: str) -> list[dict]:
@@ -126,6 +50,7 @@ def _merge_word_timings(raw_timings: list[dict], original_text: str) -> list[dic
         return raw_timings
 
     def clean(s: str) -> str:
+        """Strip punctuation for comparison only."""
         return re.sub(r"[^\w'-]", "", s).lower()
 
     merged = []
@@ -146,9 +71,9 @@ def _merge_word_timings(raw_timings: list[dict], original_text: str) -> list[dic
             acc += tok
             t_idx += 1
             if acc == target:
-                break
+                break                  # perfect match — done
             if not target.startswith(acc):
-                break
+                break                  # diverged — accept what we have
 
         merged.append({"text": word, "start": start, "end": end})
 
@@ -156,14 +81,12 @@ def _merge_word_timings(raw_timings: list[dict], original_text: str) -> list[dic
 
 
 async def _save_with_word_timing(
-    text: str, out_path: str, voice: str, rate: str, pitch: str, volume: str
+    text: str, out_path: str, voice: str, rate: str, pitch: str
 ) -> list[dict]:
-    # Coach the text first for emotional delivery
-    coached_text = _coach_text(text)
-
-    # Pass rate, pitch, volume directly — NO SSML. Edge-tts handles these as
-    # native parameters so the voice reads the plain text naturally.
-    communicate = edge_tts.Communicate(coached_text, voice, rate=rate, pitch=pitch, volume=volume)
+    # Pass rate and pitch directly — NO SSML. Edge-tts handles these as
+    # native parameters so the voice reads the plain text naturally without
+    # accidentally reading out XML tags aloud.
+    communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     raw_timings = []
     with open(out_path, "wb") as f:
         async for chunk in communicate.stream():
@@ -175,9 +98,7 @@ async def _save_with_word_timing(
                 end = (chunk["offset"] + chunk["duration"]) / 10_000_000
                 raw_timings.append({"text": chunk["text"], "start": start, "end": end})
 
-    # Merge sub-word phoneme fragments back into whole words.
-    # Use the ORIGINAL (uncoached) text for matching since that's what the
-    # karaoke captions display — coached punctuation doesn't appear on screen.
+    # Merge any sub-word phoneme fragments back into whole words.
     word_timings = _merge_word_timings(raw_timings, text)
     return word_timings
 
@@ -188,23 +109,13 @@ def synthesize_line(
     voice: str | None = None,
     rate: str | None = None,
     pitch: str | None = None,
-    volume: str | None = None,
-    emotion: str | None = None,
 ) -> tuple[str, list[dict]]:
     voice = voice or pick_voice()
-
-    # Resolve emotion preset first, then allow individual overrides
-    preset_emotion = emotion or ACTIVE_PRESET
-    preset = EMOTION_PRESETS.get(preset_emotion, EMOTION_PRESETS["motivational"])
-    preset_rate, preset_pitch, preset_volume = preset
-
-    rate   = rate   or os.environ.get("TTS_RATE",   preset_rate)
-    pitch  = pitch  or os.environ.get("TTS_PITCH",  preset_pitch)
-    volume = volume or os.environ.get("TTS_VOLUME", preset_volume)
-
-    word_timings = asyncio.run(
-        _save_with_word_timing(text, out_path, voice, rate, pitch, volume)
-    )
+    # Slower rate = more thoughtful, emotional delivery
+    rate = rate or os.environ.get("TTS_RATE", "-8%")
+    # Slight pitch drop = warmth and sincerity
+    pitch = pitch or os.environ.get("TTS_PITCH", "-3Hz")
+    word_timings = asyncio.run(_save_with_word_timing(text, out_path, voice, rate, pitch))
     return out_path, word_timings
 
 
