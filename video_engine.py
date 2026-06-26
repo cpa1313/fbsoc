@@ -27,7 +27,7 @@ from moviepy import (
 from karaoke_captions import KaraokeLayout
 
 # Output is sized for Reels / TikTok / Shorts
-W, H = 1080, 1920
+W, H = 720, 1280  # 720p still looks great on mobile, renders ~2x faster
 
 LEAD_IN = 0.35            # silence before each line starts speaking
 TAIL_PAD = 0.55           # breathing room after each line finishes speaking
@@ -194,10 +194,10 @@ def build_video(scenes: list[dict], font_path: str, watermark_text: str,
 
     video.write_videofile(
         out_path,
-        fps=30,
+        fps=24,               # 24fps is cinematic standard, no need for 30
         codec="libx264",
         audio_codec="aac",
-        preset="medium",
+        preset="ultrafast",   # much faster encode, barely any quality loss for social video
         threads=4,
     )
     return out_path
