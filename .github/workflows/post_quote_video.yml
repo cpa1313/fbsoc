@@ -1,0 +1,54 @@
+name: Post Aesthetic Quote Video
+
+on:
+  schedule:
+    # Runs every day at 13:00 UTC - change to whatever time you like.
+    # Use https://crontab.guru to build your own schedule.
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: "Optional theme override (leave blank for a random theme)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write   # needed to create the Release used to host the video publicly
+
+jobs:
+  build-and-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate, render, and post the video
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
+          IG_BUSINESS_ID: ${{ secrets.IG_BUSINESS_ID }}
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+          WATERMARK_TEXT: ${{ secrets.WATERMARK_TEXT }}
+          QUOTE_THEME: ${{ github.event.inputs.theme }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python main.py
+
+      - name: Upload rendered video as a workflow artifact (for your own review)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quote-video
+          path: output.mp4
+          if-no-files-found: ignore
