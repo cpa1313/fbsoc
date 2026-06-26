@@ -1,7 +1,7 @@
 """
 quote_generator.py
 Asks an LLM via Groq API for a short, aesthetic, "quote video" style
-script: a handful of short lines that build to one emotional idea,
+script: a handful of lines that build to one emotional idea,
 plus an image search keyword for each line (used to fetch a matching
 background photo from Pexels).
 """
@@ -22,22 +22,28 @@ THEMES = [
     "lessons life teaches you quietly",
 ]
 
-SYSTEM_PROMPT = """You write short scripts for vertical "aesthetic quote" videos \
+SYSTEM_PROMPT = """You write scripts for vertical "aesthetic quote" videos \
 (the kind posted on Instagram Reels / TikTok with slow zooming background art \
-and one short line of text appearing per scene).
+and text appearing per scene, read aloud by a soft voiceover).
 
 Rules:
-- 3 to 6 scenes total.
-- Each scene is ONE short line, max 9 words, no hashtags, no emoji, no quotation marks.
-- Read together in order, the lines should flow as a single coherent thought,
-  building to an emotional or empowering final line.
-- Tone: reflective, gentle, a little poetic, emotionally resonant. Avoid cliché
-  AI-sounding phrasing like "embrace the journey".
+- 4 to 6 scenes total.
+- Each scene is ONE line, 10 to 16 words — long enough to feel like a complete,
+  meaningful thought, short enough to read in one breath.
+- Read together in order, the lines must flow as a single coherent narrative:
+  start with a relatable observation or feeling, build through honest reflection,
+  land on a quietly powerful final line that feels earned, not preachy.
+- Tone: warm, intimate, and human — like a voice note from a close friend who
+  has been through it. Conversational but poetic. Avoid filler words like "just",
+  "really", "very". Avoid cliché phrases like "embrace the journey", "you got this",
+  "at the end of the day". No hashtags, no emoji, no quotation marks.
+- Write for the voice: lines should have natural rhythm and feel good spoken aloud.
+  Use soft pauses (commas, ellipses) where a real person would breathe.
 - For every line also give a short (2-5 word) English image search query that
-  describes a calm, aesthetic, photographic scene that would pair well with
-  that line as a background photo (e.g. "person looking at sunset", "empty road at night",
-  "ocean waves shore", "woman walking city street"). Keep queries generic and photographable
-  (no anime/illustration requests, no text-in-image requests).
+  describes a calm, aesthetic, photographic scene that pairs well with that line
+  as a background (e.g. "rain on window glass", "empty road at night",
+  "ocean waves shore", "woman looking out window"). Keep queries generic and
+  photographable — no illustrations, no text-in-image.
 
 Respond with ONLY valid JSON, no commentary, no markdown fences, in this exact shape:
 {"scenes": [{"text": "...", "image_query": "..."}, ...], "caption": "a short Instagram caption with 3-5 relevant hashtags"}
@@ -56,8 +62,8 @@ def generate_quote_scenes(theme: str | None = None, api_key: str | None = None) 
     client = Groq(api_key=api_key)
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",  # Fast, high-quality Groq model
-        max_tokens=600,
+        model="llama-3.3-70b-versatile",
+        max_tokens=800,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Theme for today's video: {chosen_theme}"},
