@@ -91,7 +91,7 @@ def synthesize_line(
 ) -> tuple[str, list[dict]]:
     voice = voice or pick_voice()
     # Slower rate = more thoughtful, emotional delivery
-    rate = rate or os.environ.get("TTS_RATE", "-14%")
+    rate = rate or os.environ.get("TTS_RATE", "-8%")
     # Slight pitch drop = warmth and sincerity
     pitch = pitch or os.environ.get("TTS_PITCH", "-3Hz")
     word_timings = asyncio.run(_save_with_word_timing(text, out_path, voice, rate, pitch))

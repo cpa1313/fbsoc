@@ -29,8 +29,8 @@ from karaoke_captions import KaraokeLayout
 # Output is sized for Reels / TikTok / Shorts
 W, H = 720, 1280  # 720p still looks great on mobile, renders ~2x faster
 
-LEAD_IN = 0.35            # silence before each line starts speaking
-TAIL_PAD = 0.55           # breathing room after each line finishes speaking
+LEAD_IN = 0.25            # silence before each line starts speaking
+TAIL_PAD = 0.35           # breathing room after each line finishes speaking
 MIN_SCENE_DURATION = 2.6  # floor, used when there's no voice track at all
 NO_VOICE_DURATION = 3.4   # fallback duration per scene if no voiceover was generated
 FADE_DURATION = 0.35      # caption fade in/out
