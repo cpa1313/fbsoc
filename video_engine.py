@@ -50,6 +50,21 @@ def _ken_burns_clip(image_path: str, duration: float) -> ImageClip:
     if clip.h < H:
         clip = clip.resized(height=H)
 
+    # Pexels photos often come back huge (e.g. 5000x3000+). The zoom below
+    # only ever needs to scale up to roughly 1.0-1.4x the frame size, so
+    # there's no reason to keep resampling a multi-megapixel source image
+    # on every single frame for the whole clip duration - that's most of
+    # what was making the encode crawl. Downscale once, up front, to just
+    # bigger than the max zoom will ever need, then zoom that small image.
+    max_zoom = 1.03 + ZOOM_PER_SECOND * duration
+    safety_margin = 1.1  # a little extra headroom so the crop never runs out of pixels
+    target_w = int(W * max_zoom * safety_margin)
+    target_h = int(H * max_zoom * safety_margin)
+    if clip.w > target_w:
+        clip = clip.resized(width=target_w)
+    if clip.h > target_h:
+        clip = clip.resized(height=target_h)
+
     zoom_start = random.uniform(1.0, 1.03)
     clip = clip.with_effects([vfx.Resize(lambda t: zoom_start + ZOOM_PER_SECOND * t)])
     clip = clip.with_effects([vfx.Crop(x_center=clip.w / 2, y_center=clip.h / 2, width=W, height=H)])
